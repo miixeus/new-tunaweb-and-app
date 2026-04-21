@@ -5,6 +5,7 @@ import { CreateClientScreen } from './screens/create-client';
 import { CreateProjectScreen } from './screens/create-project';
 import { ProjectAdminScreen } from './screens/project-admin';
 import { ProjectClientScreen } from './screens/project-client';
+import { AdminGuard, ProjectGuard } from './components/auth-guards';
 
 export const router = createBrowserRouter([
   {
@@ -13,22 +14,42 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin',
-    element: <AdminDashboard />,
+    element: (
+      <AdminGuard>
+        <AdminDashboard />
+      </AdminGuard>
+    ),
   },
   {
     path: '/admin/clients/new',
-    element: <CreateClientScreen />,
+    element: (
+      <AdminGuard>
+        <CreateClientScreen />
+      </AdminGuard>
+    ),
   },
   {
     path: '/admin/projects/new',
-    element: <CreateProjectScreen />,
+    element: (
+      <AdminGuard>
+        <CreateProjectScreen />
+      </AdminGuard>
+    ),
   },
   {
     path: '/admin/projects/:projectId',
-    element: <ProjectAdminScreen />,
+    element: (
+      <AdminGuard>
+        <ProjectAdminScreen />
+      </AdminGuard>
+    ),
   },
   {
     path: '/project/:projectId',
-    element: <ProjectClientScreen />,
+    element: (
+      <ProjectGuard>
+        <ProjectClientScreen />
+      </ProjectGuard>
+    ),
   },
 ]);
