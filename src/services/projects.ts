@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from "../lib/supabase";
 
 export type ProjectInsert = {
   client_id: string;
@@ -13,7 +13,7 @@ export type ProjectInsert = {
 
 export async function createProject(data: ProjectInsert) {
   const { data: project, error } = await supabase
-    .from('projects')
+    .from("projects")
     .insert(data)
     .select()
     .single();
@@ -24,9 +24,32 @@ export async function createProject(data: ProjectInsert) {
 
 export async function listProjects() {
   const { data, error } = await supabase
-    .from('projects')
-    .select('*, clients(*)')
-    .order('created_at', { ascending: false });
+    .from("projects")
+    .select("*, clients(*)")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getProjectById(projectId: string) {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*, clients(*)")
+    .eq("id", projectId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateProjectStatus(projectId: string, status: string) {
+  const { data, error } = await supabase
+    .from("projects")
+    .update({ status })
+    .eq("id", projectId)
+    .select("*, clients(*)")
+    .single();
 
   if (error) throw error;
   return data;
