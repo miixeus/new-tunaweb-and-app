@@ -1,0 +1,89 @@
+# ==============================
+# DEPENDÊNCIAS
+# ==============================
+node_modules/
+.pnpm-store/
+.npm/
+
+# ==============================
+# BUILD / OUTPUT
+# ==============================
+dist/
+build/
+out/
+
+# ==============================
+# ENV (SEGURANÇA CRÍTICA)
+# ==============================
+.env
+.env.local
+.env.development
+.env.production
+
+# ==============================
+# LOGS
+# ==============================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================
+# SISTEMA OPERACIONAL
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# IDE / EDITOR
+# ==============================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ==============================
+# VERCEL
+# ==============================
+.vercel
+
+# ==============================
+# TYPESCRIPT
+# ==============================
+*.tsbuildinfo
+
+# ==============================
+# TESTES (se usar futuramente)
+# ==============================
+coverage/
+jest.config.ts
+vitest.config.ts
+
+# ==============================
+# CACHE
+# ==============================
+.cache/
+.tmp/
+.temp/
+
+# ==============================
+# UPLOADS LOCAIS (IMPORTANTE)
+# ==============================
+uploads/
+storage/
+
+# ==============================
+# SUPABASE LOCAL (se usar CLI)
+# ==============================
+.supabase/
+
+# ==============================
+# ARQUIVOS SENSÍVEIS
+# ==============================
+*.pem
+*.key
+*.crt
