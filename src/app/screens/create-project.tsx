@@ -12,7 +12,11 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { ArrowLeft, Upload } from "lucide-react";
-import { useAppStore } from '../../store/app-store';
+import { listClients } from "../services/clients";
+import { uploadProjectFile } from "../services/files";
+import { createMessage } from "../services/messages";
+import { createProject } from "../services/projects";
+import type { Client, ProjectStatus } from "../types/domain";
 
 type LocationState = {
   preselectedClientId?: string;
@@ -23,9 +27,10 @@ export function CreateProjectScreen() {
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { clients, addProject, addFile, addMessage } = useAppStore();
-
   const locationState = (location.state as LocationState | null) ?? null;
+
+  const [clients, setClients] = useState<Client[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(true);
 
   const [formData, setFormData] = useState({
     clientId: locationState?.preselectedClientId || "",
@@ -33,18 +38,14 @@ export function CreateProjectScreen() {
     serviceType: "",
     scope: "",
     startDate: "",
-    status: "planning" as
-      | "planning"
-      | "production"
-      | "waiting_client"
-      | "approved"
-      | "published",
+    status: "planning" as ProjectStatus,
     brandColor: "#5f19ea",
   });
 
   const [selectedLogoName, setSelectedLogoName] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     if (locationState?.preselectedClientId) {
@@ -55,50 +56,69 @@ export function CreateProjectScreen() {
     }
   }, [locationState?.preselectedClientId]);
 
-  const handleSubmit = (e: React.FormEvent, sendInvite = false) => {
+  useEffect(() => {
+    const loadClients = async () => {
+      setIsLoadingClients(true);
+      setErrorMessage("");
+      try {
+        const data = await listClients();
+        setClients(data);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Falha ao carregar clientes.");
+      } finally {
+        setIsLoadingClients(false);
+      }
+    };
+
+    void loadClients();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent, sendInvite = false) => {
     e.preventDefault();
 
     if (isSubmitting) return;
-    if (!formData.clientId) return;
+    if (!formData.clientId) {
+      setErrorMessage("Selecione um cliente para continuar.");
+      return;
+    }
 
     setIsSubmitting(true);
+    setErrorMessage("");
 
-    const createdProject = addProject({
-      clientId: formData.clientId,
-      name: formData.name,
-      serviceType: formData.serviceType,
-      scope: formData.scope,
-      startDate: formData.startDate,
-      status: formData.status,
-      brandColor: formData.brandColor,
-    });
+    try {
+      const createdProject = await createProject({
+        clientId: formData.clientId,
+        name: formData.name,
+        serviceType: formData.serviceType,
+        scope: formData.scope,
+        startDate: formData.startDate,
+        status: formData.status,
+        brandColor: formData.brandColor,
+      });
 
-    if (logoFile) {
-      addFile(
-        createdProject.id,
-        logoFile.name,
-        logoFile.type || "image/*",
-        "Tunaweb",
-      );
+      if (logoFile) {
+        await uploadProjectFile({
+          projectId: createdProject.id,
+          file: logoFile,
+          uploadedBy: "Tunaweb",
+        });
+      }
+
+      await createMessage({
+        projectId: createdProject.id,
+        content: sendInvite
+          ? "Convite de acesso enviado ao cliente para entrada no mural do projeto."
+          : "Projeto criado com sucesso e pronto para início.",
+        authorName: "Tunaweb",
+        authorRole: "admin",
+      });
+
+      navigate(`/admin/projects/${createdProject.id}`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Falha ao criar projeto.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (sendInvite) {
-      addMessage(
-        createdProject.id,
-        "Convite de acesso enviado ao cliente para entrada no mural do projeto.",
-        "Tunaweb",
-        "admin",
-      );
-    } else {
-      addMessage(
-        createdProject.id,
-        "Projeto criado com sucesso e pronto para início.",
-        "Tunaweb",
-        "admin",
-      );
-    }
-
-    navigate(`/admin/projects/${createdProject.id}`);
   };
 
   return (
@@ -117,7 +137,7 @@ export function CreateProjectScreen() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
+        <form onSubmit={(e) => void handleSubmit(e, false)} className="space-y-6">
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-8 space-y-6">
             <div className="space-y-2">
               <Label htmlFor="client" className="text-white">
@@ -128,17 +148,14 @@ export function CreateProjectScreen() {
                 onValueChange={(value) =>
                   setFormData((prev) => ({ ...prev, clientId: value }))
                 }
+                disabled={isLoadingClients || isSubmitting}
               >
                 <SelectTrigger className="bg-[#1a1a1a] border-[#2a2a2a] text-white h-12">
                   <SelectValue placeholder="Selecione um cliente" />
                 </SelectTrigger>
                 <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
                   {clients.map((client) => (
-                    <SelectItem
-                      key={client.id}
-                      value={client.id}
-                      className="text-white"
-                    >
+                    <SelectItem key={client.id} value={client.id} className="text-white">
                       {client.businessName}
                     </SelectItem>
                   ))}
@@ -238,12 +255,7 @@ export function CreateProjectScreen() {
                 onValueChange={(value) =>
                   setFormData((prev) => ({
                     ...prev,
-                    status: value as
-                      | "planning"
-                      | "production"
-                      | "waiting_client"
-                      | "approved"
-                      | "published",
+                    status: value as ProjectStatus,
                   }))
                 }
               >
@@ -304,8 +316,7 @@ export function CreateProjectScreen() {
 
             <div className="space-y-2">
               <Label className="text-white">
-                Logo do projeto{" "}
-                <span className="text-gray-500">(opcional)</span>
+                Logo do projeto <span className="text-gray-500">(opcional)</span>
               </Label>
 
               <input
@@ -326,33 +337,35 @@ export function CreateProjectScreen() {
                 className="w-full border-2 border-dashed border-[#2a2a2a] rounded-lg p-8 text-center hover:border-[#3a3a3a] transition-colors"
               >
                 <Upload className="w-8 h-8 text-gray-500 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">
-                  Clique para fazer upload ou arraste aqui
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  PNG, JPG ou SVG (máx. 2MB)
-                </p>
+                <p className="text-sm text-gray-400">Clique para fazer upload ou arraste aqui</p>
+                <p className="text-xs text-gray-500 mt-1">PNG, JPG ou SVG (máx. 2MB)</p>
                 {selectedLogoName && (
-                  <p className="text-xs text-[#00cf40] mt-3">
-                    Arquivo selecionado: {selectedLogoName}
-                  </p>
+                  <p className="text-xs text-[#00cf40] mt-3">Arquivo selecionado: {selectedLogoName}</p>
                 )}
               </button>
             </div>
           </div>
 
+          {errorMessage && (
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3">
+              <p className="text-sm text-red-300">{errorMessage}</p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isLoadingClients}
               className="flex-1 h-12 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white border border-[#2a2a2a] disabled:opacity-60"
             >
-              Criar projeto
+              {isSubmitting ? "Criando..." : "Criar projeto"}
             </Button>
             <Button
               type="button"
-              disabled={isSubmitting}
-              onClick={(e) => handleSubmit(e, true)}
+              disabled={isSubmitting || isLoadingClients}
+              onClick={(e) => {
+                void handleSubmit(e, true);
+              }}
               className="flex-1 h-12 bg-[#5f19ea] hover:bg-[#7c3aed] text-white disabled:opacity-60"
             >
               Criar e enviar convite

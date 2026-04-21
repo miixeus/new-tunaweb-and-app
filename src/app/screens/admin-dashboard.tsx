@@ -1,95 +1,131 @@
-import { useState } from 'react';
-import { Link } from 'react-router';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Badge } from '../components/ui/badge';
-import { Search, Plus, User, Clock, AlertCircle, RotateCcw } from 'lucide-react';
-import { useAppStore } from '../../store/app-store';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Badge } from "../components/ui/badge";
+import { Search, Plus, User, Clock, AlertCircle } from "lucide-react";
+import { countApprovedApprovals } from "../services/approvals";
+import { listRecentMessages } from "../services/messages";
+import { listProjectsWithClient } from "../services/projects";
+import type { ProjectWithClient } from "../types/domain";
+
+function toRelativeLabel(dateIso?: string) {
+  if (!dateIso) return "Sem atividade";
+
+  const date = new Date(dateIso);
+  const diffMs = Date.now() - date.getTime();
+
+  if (Number.isNaN(diffMs)) return "Sem atividade";
+
+  const minutes = Math.floor(diffMs / (1000 * 60));
+  if (minutes < 1) return "Agora há pouco";
+  if (minutes < 60) return `há ${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  return `há ${days} dia${days > 1 ? "s" : ""}`;
+}
 
 export function AdminDashboard() {
-  const { projects, clients, messages, approvals, resetAppState } = useAppStore();
-  const [search, setSearch] = useState('');
-  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [search, setSearch] = useState("");
+  const [projects, setProjects] = useState<ProjectWithClient[]>([]);
+  const [approvedCount, setApprovedCount] = useState(0);
+  const [recentActivities, setRecentActivities] = useState<
+    { id: string; description: string; user: string; timestamp: string }[]
+  >([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const getClientName = (clientId: string) => {
-    const client = clients.find((c) => c.id === clientId);
-    return client?.businessName || 'Cliente';
-  };
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      try {
+        const [projectRows, approvedItems, recentMessages] = await Promise.all([
+          listProjectsWithClient(),
+          countApprovedApprovals(),
+          listRecentMessages(5),
+        ]);
+
+        setProjects(projectRows);
+        setApprovedCount(approvedItems);
+        setRecentActivities(
+          recentMessages.map((message) => {
+            const project = projectRows.find((item) => item.id === message.projectId);
+            return {
+              id: message.id,
+              description: `${message.authorRole === "admin" ? "Tunaweb" : "Cliente"} enviou uma mensagem em ${project?.name || "Projeto"}`,
+              user: message.authorName,
+              timestamp: message.createdAt,
+            };
+          }),
+        );
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Falha ao carregar dashboard.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadDashboard();
+  }, []);
 
   const getStatusLabel = (status: string) => {
     const statusMap: Record<string, string> = {
-      planning: 'Planejamento',
-      production: 'Produção',
-      waiting_client: 'Aguardando Cliente',
-      approved: 'Aprovado',
-      published: 'Publicado',
+      planning: "Planejamento",
+      production: "Produção",
+      waiting_client: "Aguardando Cliente",
+      approved: "Aprovado",
+      published: "Publicado",
     };
     return statusMap[status] || status;
   };
 
   const getStatusColor = (status: string) => {
     const colorMap: Record<string, string> = {
-      planning: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      production: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-      waiting_client: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-      approved: 'bg-[#00cf40]/10 text-[#00cf40] border-[#00cf40]/20',
-      published: 'bg-green-500/10 text-green-400 border-green-500/20',
+      planning: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+      production: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+      waiting_client: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+      approved: "bg-[#00cf40]/10 text-[#00cf40] border-[#00cf40]/20",
+      published: "bg-green-500/10 text-green-400 border-green-500/20",
     };
-    return colorMap[status] || 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    return colorMap[status] || "bg-gray-500/10 text-gray-400 border-gray-500/20";
   };
 
   const getServiceLabel = (service: string) => {
     const serviceMap: Record<string, string> = {
-      website: 'Website',
-      app: 'Aplicativo',
-      branding: 'Identidade Visual',
-      social_media: 'Social Media',
-      seo: 'SEO',
+      website: "Website",
+      app: "Aplicativo",
+      branding: "Identidade Visual",
+      social_media: "Social Media",
+      seo: "SEO",
     };
     return serviceMap[service] || service;
   };
 
-  const filteredProjects = projects.filter((project) => {
-    const clientName = getClientName(project.clientId).toLowerCase();
-    const projectName = project.name.toLowerCase();
-    const query = search.trim().toLowerCase();
+  const filteredProjects = useMemo(
+    () =>
+      projects.filter((project) => {
+        const clientName = project.client?.businessName?.toLowerCase() || "";
+        const projectName = project.name.toLowerCase();
+        const query = search.trim().toLowerCase();
 
-    if (!query) return true;
+        if (!query) return true;
 
-    return projectName.includes(query) || clientName.includes(query);
-  });
+        return projectName.includes(query) || clientName.includes(query);
+      }),
+    [projects, search],
+  );
 
-  const pendingActions = projects.filter((p) => p.status === 'waiting_client');
-
-  const recentActivities = [...messages]
-    .sort(
-      (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-    )
-    .slice(0, 5)
-    .map((message) => {
-      const project = projects.find((p) => p.id === message.projectId);
-      return {
-        id: message.id,
-        description: `${message.authorRole === 'admin' ? 'Tunaweb' : 'Cliente'} enviou uma mensagem em ${project?.name || 'Projeto'}`,
-        user: message.author,
-        timestamp: message.timestamp,
-      };
-    });
+  const pendingActions = projects.filter((p) => p.status === "waiting_client");
 
   const totalProjects = projects.length;
-  const waitingClientCount = projects.filter(
-    (project) => project.status === 'waiting_client',
-  ).length;
-  const approvedCount = approvals.filter(
-    (approval) => approval.status === 'approved',
-  ).length;
-
-  const handleReset = () => {
-    resetAppState();
-    setFeedbackMessage('Os dados de teste foram resetados com sucesso.');
-    setTimeout(() => setFeedbackMessage(''), 3000);
-  };
+  const waitingClientCount = projects.filter((project) => project.status === "waiting_client").length;
 
   return (
     <div className="min-h-screen bg-black">
@@ -115,15 +151,6 @@ export function AdminDashboard() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <Button
-                type="button"
-                onClick={handleReset}
-                className="bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white border border-[#2a2a2a]"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Resetar dados
-              </Button>
-
               <Link to="/admin/clients/new">
                 <Button className="bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white border border-[#2a2a2a]">
                   <Plus className="w-4 h-4 mr-2" />
@@ -147,9 +174,9 @@ export function AdminDashboard() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {feedbackMessage && (
-          <div className="rounded-xl border border-[#00cf40]/20 bg-[#00cf40]/10 px-4 py-3">
-            <p className="text-sm text-[#00cf40]">{feedbackMessage}</p>
+        {errorMessage && (
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+            <p className="text-sm text-red-300">{errorMessage}</p>
           </div>
         )}
 
@@ -161,27 +188,25 @@ export function AdminDashboard() {
 
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
             <p className="text-sm text-gray-400 mb-2">Aguardando cliente</p>
-            <p className="text-3xl font-bold text-yellow-400">
-              {waitingClientCount}
-            </p>
+            <p className="text-3xl font-bold text-yellow-400">{waitingClientCount}</p>
           </div>
 
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
             <p className="text-sm text-gray-400 mb-2">Itens aprovados</p>
-            <p className="text-3xl font-bold text-[#00cf40]">
-              {approvedCount}
-            </p>
+            <p className="text-3xl font-bold text-[#00cf40]">{approvedCount}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-white mb-6">
-                Projetos Ativos
-              </h2>
+              <h2 className="text-2xl font-bold text-white mb-6">Projetos Ativos</h2>
 
-              {filteredProjects.length > 0 ? (
+              {isLoading ? (
+                <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-8 text-center">
+                  <p className="text-white">Carregando projetos...</p>
+                </div>
+              ) : filteredProjects.length > 0 ? (
                 <div className="space-y-4">
                   {filteredProjects.map((project) => (
                     <div
@@ -190,12 +215,8 @@ export function AdminDashboard() {
                     >
                       <div className="flex items-start justify-between mb-4 gap-4">
                         <div className="flex-1">
-                          <h3 className="text-xl font-semibold text-white mb-1">
-                            {project.name}
-                          </h3>
-                          <p className="text-gray-400">
-                            {getClientName(project.clientId)}
-                          </p>
+                          <h3 className="text-xl font-semibold text-white mb-1">{project.name}</h3>
+                          <p className="text-gray-400">{project.client?.businessName || "Cliente"}</p>
                         </div>
 
                         <Badge className={getStatusColor(project.status)}>
@@ -207,18 +228,14 @@ export function AdminDashboard() {
                         <span>{getServiceLabel(project.serviceType)}</span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          {project.lastActivity}
+                          {toRelativeLabel(project.lastActivity)}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between gap-4">
-                        <p className="text-sm text-gray-300">
-                          {project.nextAction}
-                        </p>
+                        <p className="text-sm text-gray-300">{project.nextAction || "Sem próxima ação definida."}</p>
                         <Link to={`/admin/projects/${project.id}`}>
-                          <Button className="bg-[#5f19ea] hover:bg-[#7c3aed] text-white">
-                            Abrir
-                          </Button>
+                          <Button className="bg-[#5f19ea] hover:bg-[#7c3aed] text-white">Abrir</Button>
                         </Link>
                       </div>
                     </div>
@@ -226,12 +243,8 @@ export function AdminDashboard() {
                 </div>
               ) : (
                 <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-8 text-center">
-                  <p className="text-lg text-white mb-2">
-                    Nenhum projeto encontrado
-                  </p>
-                  <p className="text-sm text-gray-400 mb-6">
-                    Crie um novo projeto ou ajuste sua busca.
-                  </p>
+                  <p className="text-lg text-white mb-2">Nenhum projeto encontrado</p>
+                  <p className="text-sm text-gray-400 mb-6">Crie um novo projeto ou ajuste sua busca.</p>
                   <Link to="/admin/projects/new">
                     <Button className="bg-[#5f19ea] hover:bg-[#7c3aed] text-white">
                       Criar primeiro projeto
@@ -256,28 +269,20 @@ export function AdminDashboard() {
                       key={project.id}
                       className="p-3 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]"
                     >
-                      <p className="text-sm font-medium text-white mb-1">
-                        {project.name}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {project.nextAction}
-                      </p>
+                      <p className="text-sm font-medium text-white mb-1">{project.name}</p>
+                      <p className="text-xs text-gray-400">{project.nextAction || "Sem ação definida"}</p>
                     </div>
                   ))
                 ) : (
                   <div className="p-3 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]">
-                    <p className="text-sm text-gray-400">
-                      Nenhuma ação pendente no momento.
-                    </p>
+                    <p className="text-sm text-gray-400">Nenhuma ação pendente no momento.</p>
                   </div>
                 )}
               </div>
             </div>
 
             <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
-                Atividade Recente
-              </h3>
+              <h3 className="text-lg font-semibold text-white mb-4">Atividade Recente</h3>
 
               <div className="space-y-4">
                 {recentActivities.length > 0 ? (
@@ -285,19 +290,15 @@ export function AdminDashboard() {
                     <div key={activity.id} className="flex gap-3">
                       <div className="w-2 h-2 rounded-full bg-[#5f19ea] mt-2 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="text-sm text-white mb-1">
-                          {activity.description}
-                        </p>
+                        <p className="text-sm text-white mb-1">{activity.description}</p>
                         <p className="text-xs text-gray-500">
-                          {activity.user}
+                          {activity.user} • {toRelativeLabel(activity.timestamp)}
                         </p>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-gray-400">
-                    Ainda não há atividades recentes.
-                  </p>
+                  <p className="text-sm text-gray-400">Ainda não há atividades recentes.</p>
                 )}
               </div>
             </div>

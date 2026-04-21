@@ -1,69 +1,86 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { useAppStore } from '../../store/app-store';
-
-<div className="text-center mb-8">
-  <h2 className="text-2xl font-bold text-white mb-2">
-    Acesse seu projeto
-  </h2>
-  <p className="text-gray-400">
-    Aqui você acompanha tudo que está sendo desenvolvido pela Tunaweb.
-  </p>
-</div>
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { getClientByEmail } from "../services/clients";
+import { sendLoginCode, verifyLoginCode, isAdminEmail } from "../services/auth";
+import { getLatestProjectByClientId } from "../services/projects";
 
 export function LoginScreen() {
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSendCode = (e: React.FormEvent) => {
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
-      setErrorMessage('Digite um email válido.');
+      setErrorMessage("Digite um email válido.");
       return;
     }
 
-    setErrorMessage('');
-    setCodeSent(true);
+    setIsSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      await sendLoginCode(normalizedEmail);
+      setCodeSent(true);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível enviar o código.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-const { findClientByEmail, getLatestProjectByClientId } = useAppStore();
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-const handleLogin = (e: React.FormEvent) => {
-  e.preventDefault();
+    if (!code.trim()) {
+      setErrorMessage("Digite o código de acesso recebido por email.");
+      return;
+    }
 
-  // Admin
-  if (email === 'admin@tunaweb.com.br') {
-    navigate('/admin');
-    return;
-  }
+    setIsSubmitting(true);
+    setErrorMessage("");
 
-  // Cliente
-  const client = findClientByEmail(email);
+    try {
+      await verifyLoginCode(email, code);
 
-  if (!client) {
-    alert('Cliente não encontrado.');
-    return;
-  }
+      const normalizedEmail = email.trim().toLowerCase();
 
-  const project = getLatestProjectByClientId(client.id);
+      if (isAdminEmail(normalizedEmail)) {
+        navigate("/admin");
+        return;
+      }
 
-  if (!project) {
-    alert('Nenhum projeto encontrado para este cliente.');
-    return;
-  }
+      const client = await getClientByEmail(normalizedEmail);
 
-  navigate(`/project/${project.id}`);
-};
+      if (!client) {
+        setErrorMessage("Cliente não encontrado para este email.");
+        return;
+      }
+
+      const project = await getLatestProjectByClientId(client.id);
+
+      if (!project) {
+        setErrorMessage("Nenhum projeto encontrado para este cliente.");
+        return;
+      }
+
+      navigate(`/project/${project.id}`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível concluir o login.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-6">
@@ -76,9 +93,7 @@ const handleLogin = (e: React.FormEvent) => {
 
         <div className="bg-[#0a0a0a] rounded-2xl p-8 border border-[#1a1a1a] shadow-2xl">
           <h2 className="text-2xl font-bold text-white mb-2">Acessar projeto</h2>
-          <p className="text-gray-400 mb-8">
-            Acesse seu projeto de forma simples e direta
-          </p>
+          <p className="text-gray-400 mb-8">Acesse seu projeto de forma simples e direta</p>
 
           <form onSubmit={codeSent ? handleLogin : handleSendCode} className="space-y-6">
             <div className="space-y-2">
@@ -92,20 +107,21 @@ const handleLogin = (e: React.FormEvent) => {
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
-                  if (errorMessage) setErrorMessage('');
+                  if (errorMessage) setErrorMessage("");
                 }}
                 className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 h-12"
                 required
-                disabled={codeSent}
+                disabled={codeSent || isSubmitting}
               />
             </div>
 
             {!codeSent ? (
               <Button
                 type="submit"
+                disabled={isSubmitting}
                 className="w-full h-12 bg-[#5f19ea] hover:bg-[#7c3aed] text-white font-semibold"
               >
-                Enviar código
+                {isSubmitting ? "Enviando..." : "Enviar código"}
               </Button>
             ) : (
               <>
@@ -120,20 +136,22 @@ const handleLogin = (e: React.FormEvent) => {
                     value={code}
                     onChange={(e) => {
                       setCode(e.target.value);
-                      if (errorMessage) setErrorMessage('');
+                      if (errorMessage) setErrorMessage("");
                     }}
                     className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 h-12 text-center text-2xl tracking-widest"
                     required
                     maxLength={6}
                     autoFocus
+                    disabled={isSubmitting}
                   />
                 </div>
 
                 <Button
                   type="submit"
+                  disabled={isSubmitting}
                   className="w-full h-12 bg-[#5f19ea] hover:bg-[#7c3aed] text-white font-semibold"
                 >
-                  Entrar
+                  {isSubmitting ? "Validando..." : "Entrar"}
                 </Button>
 
                 <Button
@@ -141,10 +159,11 @@ const handleLogin = (e: React.FormEvent) => {
                   variant="ghost"
                   onClick={() => {
                     setCodeSent(false);
-                    setCode('');
-                    setErrorMessage('');
+                    setCode("");
+                    setErrorMessage("");
                   }}
                   className="w-full text-gray-400 hover:text-white"
+                  disabled={isSubmitting}
                 >
                   Voltar
                 </Button>
@@ -163,7 +182,7 @@ const handleLogin = (e: React.FormEvent) => {
               Seu acesso é enviado por e-mail para manter segurança e simplicidade.
             </p>
             <p className="text-xs text-gray-600">
-              Teste admin: <span className="text-gray-400">admin@tunaweb.com.br</span>
+              Admins permitidos em <span className="text-gray-400">VITE_ADMIN_EMAILS</span>
             </p>
           </div>
         </div>
