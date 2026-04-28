@@ -1,55 +1,66 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
-import { ArrowLeft } from 'lucide-react';
-import { useAppStore } from '../../store/app-store';
+import { useState } from "react";
+import { useNavigate, Link } from "react-router";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { ArrowLeft } from "lucide-react";
+import { createClient } from "../../services/clients";
 
 export function CreateClientScreen() {
   const navigate = useNavigate();
-  const { addClient } = useAppStore();
 
   const [formData, setFormData] = useState({
-    name: '',
-    businessName: '',
-    email: '',
-    phone: '',
-    notes: '',
+    name: "",
+    businessName: "",
+    email: "",
+    phone: "",
+    notes: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const updateField = (field: keyof typeof formData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent, createProject = false) => {
+  const handleSubmit = async (e: React.SyntheticEvent, createProject = false) => {
     e.preventDefault();
 
     if (isSubmitting) return;
 
-    setIsSubmitting(true);
+    try {
+      setIsSubmitting(true);
+      setFeedbackMessage("");
+      setErrorMessage("");
 
-    const createdClient = addClient({
-      name: formData.name,
-      businessName: formData.businessName,
-      email: formData.email,
-      phone: formData.phone,
-      notes: formData.notes,
-    });
-
-    if (createProject) {
-      navigate('/admin/projects/new', {
-        state: {
-          preselectedClientId: createdClient.id,
-        },
+      const createdClient = await createClient({
+        contact_name: formData.name.trim(),
+        business_name: formData.businessName.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim() || null,
+        notes: formData.notes.trim() || null,
       });
-      return;
-    }
 
-    navigate('/admin');
+      if (createProject) {
+        navigate("/admin/projects/new", {
+          state: {
+            preselectedClientId: createdClient.id,
+          },
+        });
+        return;
+      }
+
+      setFeedbackMessage("Cliente criado com sucesso.");
+      navigate("/admin");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar cliente.";
+      setErrorMessage(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -68,7 +79,7 @@ export function CreateClientScreen() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
+        <form onSubmit={(e) => void handleSubmit(e, false)} className="space-y-6">
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-8 space-y-6">
             <div className="space-y-2">
               <Label htmlFor="name" className="text-white">
@@ -79,7 +90,7 @@ export function CreateClientScreen() {
                 type="text"
                 placeholder="João Silva"
                 value={formData.name}
-                onChange={(e) => updateField('name', e.target.value)}
+                onChange={(e) => updateField("name", e.target.value)}
                 className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 h-12"
                 required
               />
@@ -94,7 +105,7 @@ export function CreateClientScreen() {
                 type="text"
                 placeholder="Empresa Ltda"
                 value={formData.businessName}
-                onChange={(e) => updateField('businessName', e.target.value)}
+                onChange={(e) => updateField("businessName", e.target.value)}
                 className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 h-12"
                 required
               />
@@ -109,7 +120,7 @@ export function CreateClientScreen() {
                 type="email"
                 placeholder="contato@empresa.com"
                 value={formData.email}
-                onChange={(e) => updateField('email', e.target.value)}
+                onChange={(e) => updateField("email", e.target.value)}
                 className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 h-12"
                 required
               />
@@ -124,7 +135,7 @@ export function CreateClientScreen() {
                 type="tel"
                 placeholder="+55 11 98765-4321"
                 value={formData.phone}
-                onChange={(e) => updateField('phone', e.target.value)}
+                onChange={(e) => updateField("phone", e.target.value)}
                 className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 h-12"
               />
             </div>
@@ -137,11 +148,14 @@ export function CreateClientScreen() {
                 id="notes"
                 placeholder="Notas sobre o cliente..."
                 value={formData.notes}
-                onChange={(e) => updateField('notes', e.target.value)}
+                onChange={(e) => updateField("notes", e.target.value)}
                 className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-gray-500 min-h-[120px]"
               />
             </div>
           </div>
+
+          {feedbackMessage && <p className="text-sm text-[#00cf40]">{feedbackMessage}</p>}
+          {errorMessage && <p className="text-sm text-red-300">{errorMessage}</p>}
 
           <div className="flex gap-3">
             <Button
@@ -149,13 +163,13 @@ export function CreateClientScreen() {
               disabled={isSubmitting}
               className="flex-1 h-12 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white border border-[#2a2a2a] disabled:opacity-60"
             >
-              Salvar
+              {isSubmitting ? "Salvando..." : "Salvar"}
             </Button>
 
             <Button
               type="button"
               disabled={isSubmitting}
-              onClick={(e) => handleSubmit(e, true)}
+              onClick={(e) => void handleSubmit(e, true)}
               className="flex-1 h-12 bg-[#5f19ea] hover:bg-[#7c3aed] text-white disabled:opacity-60"
             >
               Salvar e criar projeto
