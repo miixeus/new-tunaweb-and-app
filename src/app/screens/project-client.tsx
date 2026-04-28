@@ -14,18 +14,18 @@ import {
   createMessage,
   listMessagesByProjectId,
   type ProjectMessage,
-} from "../services/messages";
+} from "../../services/messages";
 import {
   listFilesByProjectId,
   uploadProjectFile,
   type ProjectFile,
-} from "../services/files";
+} from "../../services/files";
 import {
   listApprovalsByProjectId,
   approveItem,
   requestRevision,
   type ProjectApproval,
-} from "../services/approvals";
+} from "../../services/approvals";
 import { getProjectById } from "../../services/projects";
 
 type ProjectStatus =
